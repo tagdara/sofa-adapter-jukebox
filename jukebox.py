@@ -179,14 +179,15 @@ class jukebox(sofabase):
                 while self.running==True:
                     try:
                         # This should establish an SSE connection with the Jukebox
-                        async with sse_client.EventSource(self.dataset.config['url']+"/sse") as event_source:
+                        timeout = aiohttp.ClientTimeout(total=0)
+                        async with sse_client.EventSource(self.dataset.config['url']+"/sse", timeout=timeout) as event_source:
                             try:
                                 async for event in event_source:
-                                    self.log.info('.. SSE: %s' % event)
+                                    #self.log.info('.. SSE: %s' % event)
                                     try:
                                         data=json.loads(event.data)
-                                        self.log.info('Data: %s' % data)
                                         if 'nowplaying' in data:
+                                            self.log.info('<< %s' % data)
                                             await self.dataset.ingest({"player": { "jukebox": { "nowplaying": data['nowplaying'] }}})
                                     except:
                                         self.log.error('error parsing data', exc_info=True)
