@@ -5,8 +5,7 @@ import sys, os
 sys.path.append(os.path.dirname(__file__))
 sys.path.append(os.path.join(os.path.dirname(__file__),'../../base'))
 
-from sofabase import sofabase
-from sofabase import adapterbase
+from sofabase import sofabase, adapterbase, configbase
 import devices
 
 import requests
@@ -31,6 +30,13 @@ import concurrent.futures
 from aiohttp_sse_client import client as sse_client
 
 class jukebox(sofabase):
+
+    class adapter_config(configbase):
+    
+        def adapter_fields(self):
+            self.jukebox_url=self.set_or_default('jukebox_url', mandatory=True)
+            self.jukebox_port=self.set_or_default('jukebox_port', default=443)
+
 
     class EndpointHealth(devices.EndpointHealth):
 
@@ -119,6 +125,7 @@ class jukebox(sofabase):
                 
         async def Skip(self, correlationToken=''):
             try:
+                await self.adapter.jukeboxCommand('next')
                 return self.device.Response(correlationToken)
             except:
                 self.log.error('!! Error during Skip', exc_info=True)
@@ -135,7 +142,8 @@ class jukebox(sofabase):
 
     class adapterProcess(adapterbase):
 
-        def __init__(self, log=None, loop=None, dataset=None, notify=None, request=None, **kwargs):
+        def __init__(self, log=None, loop=None, dataset=None, notify=None, request=None, config=None, **kwargs):
+            self.config=config
             self.dataset=dataset
             self.dataset.nativeDevices['player']={}
             self.log=log
@@ -164,7 +172,7 @@ class jukebox(sofabase):
             
             try:
                 async with aiohttp.ClientSession() as client:
-                    async with client.get("%s/%s" % (self.dataset.config['url'], command)) as response:
+                    async with client.get("%s/%s" % (self.config.jukebox_url, command)) as response:
                         result=await response.read()
                         result=result.decode()
                         self.log.info('.. result: %s' % result)
@@ -180,7 +188,7 @@ class jukebox(sofabase):
                     try:
                         # This should establish an SSE connection with the Jukebox
                         timeout = aiohttp.ClientTimeout(total=0)
-                        async with sse_client.EventSource(self.dataset.config['url']+"/sse", timeout=timeout) as event_source:
+                        async with sse_client.EventSource(self.config.jukebox_url+"/sse", timeout=timeout) as event_source:
                             try:
                                 async for event in event_source:
                                     #self.log.info('.. SSE: %s' % event)
@@ -193,6 +201,8 @@ class jukebox(sofabase):
                                         self.log.error('error parsing data', exc_info=True)
                             except ConnectionError:
                                 self.log.error('!! error with SSE connection', exc_info=True)
+                    except aiohttp.client_exceptions.ClientConnectorCertificateError:
+                        self.log.error('!! error - jukebox SSL certificate error')
                     except concurrent.futures._base.TimeoutError:
                         self.log.error('!! error - jukebox SSE timeout')
                     except:
