@@ -186,6 +186,7 @@ class jukebox(sofabase):
                 await self.dataset.ingest({"player": newdevice})
                 while self.running==True:
                     try:
+                        self.log.info('.. starting jukebox SSE connection')
                         # This should establish an SSE connection with the Jukebox
                         timeout = aiohttp.ClientTimeout(total=0)
                         async with sse_client.EventSource(self.config.jukebox_url+"/sse", timeout=timeout) as event_source:
@@ -201,6 +202,7 @@ class jukebox(sofabase):
                                         self.log.error('error parsing data', exc_info=True)
                             except ConnectionError:
                                 self.log.error('!! error with SSE connection', exc_info=True)
+                        self.log.warning('!! SSE connection ended?')
                     except aiohttp.client_exceptions.ClientConnectorCertificateError:
                         self.log.error('!! error - jukebox SSL certificate error')
                     except concurrent.futures._base.TimeoutError:
@@ -216,16 +218,17 @@ class jukebox(sofabase):
                 if path.split("/")[1]=="player":
                     deviceid=path.split("/")[2]
                     nativeObject=self.dataset.nativeDevices['player'][deviceid]
+                    endpointId="%s:%s:%s" % ("jukebox","player", deviceid)
+
                     if 'name' not in nativeObject:
                         self.log.error('No name in %s %s' % (deviceid, nativeObject))
                         return None
                         
-                    if nativeObject['name'] not in self.dataset.localDevices:
-                        #if 'ZoneGroupTopology' in nativeObject:
+                    if endpointId not in self.dataset.localDevices:
                         device=devices.alexaDevice('jukebox/player/%s' % deviceid, nativeObject['name'], displayCategories=["PLAYER"], adapter=self)
                         device.EndpointHealth=jukebox.EndpointHealth(device=device)
                         device.MusicController=jukebox.MusicController(device=device)
-                        return self.dataset.newaddDevice(device)
+                        return self.dataset.add_device(device)
                 return None
             except:
                 self.log.error('Error defining smart device', exc_info=True)
